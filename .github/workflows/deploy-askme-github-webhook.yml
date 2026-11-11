@@ -1,4 +1,4 @@
-name: Deploy Ask.Me GitHub Webhook
+name: Deploy Ask.Me GitHub Agent
 
 on:
   workflow_dispatch:
@@ -21,14 +21,27 @@ jobs:
           node-version: "22"
       - name: Install Wrangler
         run: npm install --global wrangler@4
-      - name: Configure webhook secret
+      - name: Configure Worker secrets
         env:
-          ASKME_GITHUB_WEBHOOK_SECRET: ${{ secrets.ASKME_GITHUB_WEBHOOK_SECRET }}
+          GITHUB_WEBHOOK_SECRET: ${{ secrets.ASKME_GITHUB_WEBHOOK_SECRET }}
+          GITHUB_APP_ID: ${{ secrets.ASKME_GITHUB_APP_ID }}
+          GITHUB_APP_INSTALLATION_ID: ${{ secrets.ASKME_GITHUB_APP_INSTALLATION_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.ASKME_GITHUB_APP_PRIVATE_KEY }}
+          ASKME_AGENT_API_KEY: ${{ secrets.ASKME_AGENT_API_KEY }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          test -n "$ASKME_GITHUB_WEBHOOK_SECRET"
-          printf '%s' "$ASKME_GITHUB_WEBHOOK_SECRET" | wrangler secret put GITHUB_WEBHOOK_SECRET --config workers/github-webhook/wrangler.toml
+          set -euo pipefail
+          test -n "$GITHUB_WEBHOOK_SECRET"
+          test -n "$GITHUB_APP_ID"
+          test -n "$GITHUB_APP_INSTALLATION_ID"
+          test -n "$GITHUB_APP_PRIVATE_KEY"
+          test -n "$ASKME_AGENT_API_KEY"
+          printf '%s' "$GITHUB_WEBHOOK_SECRET" | wrangler secret put GITHUB_WEBHOOK_SECRET --config workers/github-webhook/wrangler.toml
+          printf '%s' "$GITHUB_APP_ID" | wrangler secret put GITHUB_APP_ID --config workers/github-webhook/wrangler.toml
+          printf '%s' "$GITHUB_APP_INSTALLATION_ID" | wrangler secret put GITHUB_APP_INSTALLATION_ID --config workers/github-webhook/wrangler.toml
+          printf '%s' "$GITHUB_APP_PRIVATE_KEY" | wrangler secret put GITHUB_APP_PRIVATE_KEY --config workers/github-webhook/wrangler.toml
+          printf '%s' "$ASKME_AGENT_API_KEY" | wrangler secret put ASKME_AGENT_API_KEY --config workers/github-webhook/wrangler.toml
       - name: Deploy Worker
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
