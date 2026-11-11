@@ -119,7 +119,7 @@ async function handleGitHubApi(request, env, url) {
     const branchRef = await githubRequest(env, apiRepo + "/git/ref/heads/" +
       ref.split("/").map(encodeURIComponent).join("/"));
     const tree = await githubRequest(env, apiRepo + "/git/trees/" + branchRef.object.sha + "?recursive=1");
-    const cleanPrefix = prefix.replace(/^\\/+|\\/+$/g, "");
+    const cleanPrefix = prefix.split("/").filter(Boolean).join("/");
     const entries = (tree.tree || []).filter(item => item.type === "blob" &&
       (!cleanPrefix || item.path.startsWith(cleanPrefix + "/") || item.path === cleanPrefix))
       .slice(0, 500).map(item => ({ path: item.path, sha: item.sha, size: item.size }));
