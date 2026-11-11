@@ -12,11 +12,10 @@ shell commands.
 - GITHUB_APP_INSTALLATION_ID: installation ID for the Ask.Me GitHub App.
 - GITHUB_APP_PRIVATE_KEY: full PEM private key for that GitHub App.
 - ASKME_AGENT_API_KEY: long random key used by the Ask.Me app at runtime.
+- ASKME_ALLOWED_ORIGIN: exact HTTPS origin of the deployed Ask.Me app.
 
-## Required Worker variables
+## Optional Worker variable
 
-- ASKME_ALLOWED_ORIGIN: exact HTTPS origin of the deployed Ask.Me app, with no
-  trailing slash or path.
 - ALLOWED_REPOSITORIES: optional comma-separated repository allowlist. If
   omitted, only blvckson/Ask.Me is allowed.
 
