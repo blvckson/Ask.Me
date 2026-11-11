@@ -59,7 +59,11 @@ async function githubRequest(env, path, options = {}) {
       ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) }
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error("GitHub API " + response.status + ": " + (data.message || "request failed"));
+  if (!response.ok) {
+    const error = new Error("GitHub API " + response.status + ": " + (data.message || "request failed"));
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 function assertAllowedRepository(owner, repo, env) {
@@ -109,6 +113,18 @@ async function handleGitHubApi(request, env, url) {
     return json({ full_name: data.full_name, default_branch: data.default_branch,
       private: data.private, html_url: data.html_url });
   }
+  if (request.method === "GET" && url.pathname === "/api/github/tree") {
+    const ref = url.searchParams.get("ref") || "main";
+    const prefix = url.searchParams.get("path") || "";
+    const branchRef = await githubRequest(env, apiRepo + "/git/ref/heads/" +
+      ref.split("/").map(encodeURIComponent).join("/"));
+    const tree = await githubRequest(env, apiRepo + "/git/trees/" + branchRef.object.sha + "?recursive=1");
+    const cleanPrefix = prefix.replace(/^\\/+|\\/+$/g, "");
+    const entries = (tree.tree || []).filter(item => item.type === "blob" &&
+      (!cleanPrefix || item.path.startsWith(cleanPrefix + "/") || item.path === cleanPrefix))
+      .slice(0, 500).map(item => ({ path: item.path, sha: item.sha, size: item.size }));
+    return json({ repository: fullName, ref, truncated: Boolean(tree.truncated), files: entries });
+  }
   if (request.method === "GET" && url.pathname === "/api/github/file") {
     const path = url.searchParams.get("path");
     if (!path || path.startsWith("/") || path.split("/").includes("..")) return json({ error: "Safe relative file path required." }, 400);
@@ -137,11 +153,14 @@ async function handleGitHubApi(request, env, url) {
       return json({ error: "Safe path, askme/ branch, and text content under 900 KB required." }, 400);
     }
     const filePath = path.split("/").map(encodeURIComponent).join("/");
-    const current = await githubRequest(env, apiRepo + "/contents/" + filePath + "?ref=" + encodeURIComponent(branch));
-    if (Array.isArray(current) || current.type !== "file") return json({ error: "Path is not an existing file." }, 400);
+    const current = await githubRequest(env, apiRepo + "/contents/" + filePath + "?ref=" + encodeURIComponent(branch))
+      .catch(error => { if (error.status === 404) return null; throw error; });
+    if (current && (Array.isArray(current) || current.type !== "file")) return json({ error: "Path is not a file." }, 400);
+    const payload = { message: String(body.message || "Ask.Me: update " + path),
+      content: encodeBase64(body.content), branch };
+    if (current) payload.sha = current.sha;
     const updated = await githubRequest(env, apiRepo + "/contents/" + filePath, {
-      method: "PUT", body: JSON.stringify({ message: String(body.message || "Ask.Me: update " + path),
-        content: encodeBase64(body.content), sha: current.sha, branch })
+      method: "PUT", body: JSON.stringify(payload)
     });
     return json({ repository: fullName, path, branch, commit_sha: updated.commit.sha, content_sha: updated.content.sha });
   }
