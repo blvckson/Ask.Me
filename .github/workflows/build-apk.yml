@@ -25,6 +25,7 @@ jobs:
           node --check public/app.js
           node --check public/voice/app.js
           node --check public/voice/inference-worker.js
+          node --check workers/github-webhook/index.js
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
