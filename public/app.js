@@ -121,6 +121,49 @@ if (newChatButton) newChatButton.addEventListener("click", startNewChat);
 renderChatHistory();
 
 
+
+const narratorAuto = document.getElementById("narrator-auto");
+const narratorSpeed = document.getElementById("narrator-speed");
+const narratorSpeedValue = document.getElementById("narrator-speed-value");
+const narratorReadButton = document.getElementById("narrator-read");
+const narratorStopButton = document.getElementById("narrator-stop");
+let latestAnswerText = "";
+const NARRATOR_AUTO_KEY = "askme_narrator_auto";
+const NARRATOR_SPEED_KEY = "askme_narrator_speed";
+if (narratorAuto) narratorAuto.checked = localStorage.getItem(NARRATOR_AUTO_KEY) === "true";
+if (narratorSpeed) narratorSpeed.value = localStorage.getItem(NARRATOR_SPEED_KEY) || "0.85";
+function updateNarratorSpeedLabel() {
+  if (narratorSpeedValue && narratorSpeed) narratorSpeedValue.textContent = Number(narratorSpeed.value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "") + "×";
+}
+updateNarratorSpeedLabel();
+if (narratorAuto) narratorAuto.addEventListener("change", () => localStorage.setItem(NARRATOR_AUTO_KEY, String(narratorAuto.checked)));
+if (narratorSpeed) narratorSpeed.addEventListener("input", () => {
+  updateNarratorSpeedLabel();
+  localStorage.setItem(NARRATOR_SPEED_KEY, narratorSpeed.value);
+});
+function speakText(text) {
+  if (!text || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+    statusBox.textContent = "Text-to-speech is not supported by this browser.";
+    return;
+  }
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = Math.max(0.3, Math.min(1.5, Number(narratorSpeed?.value || 0.85)));
+    utterance.onstart = () => { statusBox.textContent = "Narrator is reading the answer…"; };
+    utterance.onend = () => { statusBox.textContent = "Narration finished."; };
+    utterance.onerror = event => { statusBox.textContent = "Narration unavailable: " + (event.error || "speech error"); };
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    statusBox.textContent = "Narration unavailable: " + error.message;
+  }
+}
+if (narratorReadButton) narratorReadButton.addEventListener("click", () => speakText(latestAnswerText || resultBox.textContent));
+if (narratorStopButton) narratorStopButton.addEventListener("click", () => {
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  statusBox.textContent = "Narration stopped.";
+});
+
 const narratorSettingsButton = document.getElementById("narrator-settings-button");
 const narratorModal = document.getElementById("narrator-modal");
 const narratorClose = document.getElementById("narrator-close");
@@ -216,18 +259,16 @@ async function askAI() {
     const response = await fetch(API_BASE + "/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, images, ocrText })
+      body: JSON.stringify({ prompt, images, ocrText, includeMedia: true, mediaPreference: "Return a small selection of directly relevant images and videos when useful to explain the answer. Include valid source URLs, titles, and media types." })
     });
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "The AI service returned an error.");
 
     resultBox.textContent = data.result || "No response was returned.";
+    latestAnswerText = data.result || "No response was returned.";
     storeChatExchange(submittedPrompt, data.result || "No response was returned.");
-    if (narratorDefaults.auto || narratorDefaults.enabled) {
-      if (narratorVoiceId) await playServerNarration(data.result || "No response was returned.");
-      else speakText(data.result || "No response was returned.");
-    }
+    if (narratorAuto?.checked) speakText(latestAnswerText);
 
     renderMedia(data.media);
     renderSources(data.sources);
