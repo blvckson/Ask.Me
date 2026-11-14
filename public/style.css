@@ -63,3 +63,11 @@ button:disabled { opacity: .6; cursor: wait; }
 .chat-message-label { font-size:12px; font-weight:bold; margin-bottom:5px; }
 .chat-message-body { line-height:1.45; }
 .chat-message-time { display:block; margin-top:6px; font-size:10px; color:#60656b; }
+
+.narrator-controls { margin:0 0 14px; padding:14px; background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,.08); }
+.narrator-toggle { display:flex; align-items:center; gap:9px; margin:0 0 10px; }
+.narrator-toggle input { width:20px; height:20px; }
+.narrator-speed-label { display:flex; justify-content:space-between; font-size:13px; margin:8px 0; }
+#narrator-speed { width:100%; accent-color:#111; }
+.narrator-actions { display:flex; gap:8px; }
+.narrator-actions button { flex:1; margin:8px 0 0; padding:10px; font-size:13px; }
