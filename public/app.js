@@ -11,6 +11,116 @@ const buildButton = document.getElementById("build-button");
 
 let selectedImages = [];
 
+const chatTranscript = document.getElementById("chat-transcript");
+const historyList = document.getElementById("chat-history-list");
+const newChatButton = document.getElementById("new-chat-button");
+const CHAT_HISTORY_KEY = "askme_chat_history_v1";
+let conversations = loadConversations();
+let activeConversationId = conversations[0]?.id || null;
+
+function loadConversations() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch (_) { return []; }
+}
+function saveConversations() {
+  try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(conversations.slice(0, 100))); }
+  catch (error) { statusBox.textContent = "Chat could not be saved on this device: " + error.message; }
+}
+function activeConversation() {
+  return conversations.find(item => item.id === activeConversationId) || null;
+}
+function startNewChat() {
+  activeConversationId = null;
+  chatTranscript.replaceChildren();
+  resultBox.textContent = "";
+  mediaBox.replaceChildren();
+  sourceList.replaceChildren();
+  sourcesBox.hidden = true;
+  promptBox.value = "";
+  selectedImages = [];
+  imageInput.value = "";
+  preview.replaceChildren();
+  fileStatus.textContent = "Attach an image or document";
+  statusBox.textContent = "New chat";
+  renderChatHistory();
+}
+function addChatMessage(role, content, time) {
+  const bubble = document.createElement("article");
+  bubble.className = "chat-message " + (role === "user" ? "user-message" : "assistant-message");
+  const label = document.createElement("div");
+  label.className = "chat-message-label";
+  label.textContent = role === "user" ? "You" : "Ask.Me";
+  const body = document.createElement("div");
+  body.className = "chat-message-body";
+  body.textContent = content;
+  const stamp = document.createElement("time");
+  stamp.className = "chat-message-time";
+  stamp.dateTime = time || new Date().toISOString();
+  stamp.textContent = new Date(stamp.dateTime).toLocaleString();
+  bubble.append(label, body, stamp);
+  chatTranscript.appendChild(bubble);
+  chatTranscript.scrollTop = chatTranscript.scrollHeight;
+}
+function renderConversation(conversation) {
+  chatTranscript.replaceChildren();
+  for (const message of conversation.messages || []) addChatMessage(message.role, message.content, message.time);
+  resultBox.textContent = "";
+  mediaBox.replaceChildren();
+  sourceList.replaceChildren();
+  sourcesBox.hidden = true;
+  statusBox.textContent = "Opened saved conversation";
+}
+function renderChatHistory() {
+  historyList.replaceChildren();
+  if (!conversations.length) {
+    const empty = document.createElement("p");
+    empty.className = "history-empty";
+    empty.textContent = "Your previous conversations will appear here.";
+    historyList.appendChild(empty);
+    return;
+  }
+  conversations.forEach(conversation => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "history-item" + (conversation.id === activeConversationId ? " active" : "");
+    const title = document.createElement("span");
+    title.className = "history-item-title";
+    title.textContent = conversation.title || "New conversation";
+    const date = document.createElement("small");
+    date.textContent = new Date(conversation.updatedAt).toLocaleString();
+    item.append(title, date);
+    item.addEventListener("click", () => {
+      activeConversationId = conversation.id;
+      renderConversation(conversation);
+      renderChatHistory();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    historyList.appendChild(item);
+  });
+}
+function storeChatExchange(userText, assistantText) {
+  const now = new Date().toISOString();
+  let conversation = activeConversation();
+  if (!conversation) {
+    conversation = { id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())), title: userText.slice(0, 56) || "Image conversation", createdAt: now, updatedAt: now, messages: [] };
+    conversations.unshift(conversation);
+    activeConversationId = conversation.id;
+  }
+  conversation.messages.push({ role: "user", content: userText || "Attached image", time: now });
+  conversation.messages.push({ role: "assistant", content: assistantText, time: new Date().toISOString() });
+  conversation.updatedAt = new Date().toISOString();
+  conversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  conversations = conversations.slice(0, 100);
+  saveConversations();
+  renderConversation(conversation);
+  renderChatHistory();
+}
+if (newChatButton) newChatButton.addEventListener("click", startNewChat);
+renderChatHistory();
+
+
 const narratorSettingsButton = document.getElementById("narrator-settings-button");
 const narratorModal = document.getElementById("narrator-modal");
 const narratorClose = document.getElementById("narrator-close");
@@ -41,6 +151,7 @@ buildButton.addEventListener("click", askAI);
 
 async function askAI() {
   const prompt = promptBox.value.trim();
+  const submittedPrompt = prompt;
   if (!prompt && !selectedImages.length) {
     statusBox.textContent = "Enter a question or attach an image first.";
     return;
@@ -112,6 +223,7 @@ async function askAI() {
     if (!response.ok) throw new Error(data.error || "The AI service returned an error.");
 
     resultBox.textContent = data.result || "No response was returned.";
+    storeChatExchange(submittedPrompt, data.result || "No response was returned.");
     if (narratorDefaults.auto || narratorDefaults.enabled) {
       if (narratorVoiceId) await playServerNarration(data.result || "No response was returned.");
       else speakText(data.result || "No response was returned.");
@@ -126,6 +238,7 @@ async function askAI() {
   } catch (error) {
     statusBox.textContent = "Request failed.";
     resultBox.textContent = error.message;
+    storeChatExchange(submittedPrompt, "Request failed: " + error.message);
   } finally {
     buildButton.disabled = false;
   }
