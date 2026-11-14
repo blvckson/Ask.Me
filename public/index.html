@@ -17,6 +17,13 @@
         <button id="narrator-settings-button" class="icon-button" type="button" aria-label="Narrator settings">🎙 Voice Clone</button>
       </div>
       </header>
+    <section class="history-panel" aria-label="Chat history">
+      <div class="history-heading">
+        <h2>Chat history</h2>
+        <button id="new-chat-button" class="history-new-button" type="button">＋ New chat</button>
+      </div>
+      <div id="chat-history-list" class="chat-history-list" aria-label="Previous conversations"></div>
+    </section>
     <section class="card">
       <label for="prompt">Ask Aviator AI anything</label>
       <textarea id="prompt" rows="8" placeholder="Ask a complex question or attach a screenshot..."></textarea>
@@ -28,6 +35,7 @@
       <div id="preview"></div>
       <button id="build-button" type="button">Ask Aviator AI</button>
       <div id="status" class="status" aria-live="polite"></div>
+      <div id="chat-transcript" class="chat-transcript" aria-live="polite" aria-label="Conversation"></div>
       <div id="result" aria-live="polite"></div>
       <div id="media"></div>
       <div id="sources" class="sources" hidden>
