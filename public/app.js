@@ -11,6 +11,159 @@ const buildButton = document.getElementById("build-button");
 
 let selectedImages = [];
 
+const chatTranscript = document.getElementById("chat-transcript");
+const historyList = document.getElementById("chat-history-list");
+const newChatButton = document.getElementById("new-chat-button");
+const CHAT_HISTORY_KEY = "askme_chat_history_v1";
+let conversations = loadConversations();
+let activeConversationId = conversations[0]?.id || null;
+
+function loadConversations() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CHAT_HISTORY_KEY) || "[]");
+    return Array.isArray(saved) ? saved : [];
+  } catch (_) { return []; }
+}
+function saveConversations() {
+  try { localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(conversations.slice(0, 100))); }
+  catch (error) { statusBox.textContent = "Chat could not be saved on this device: " + error.message; }
+}
+function activeConversation() {
+  return conversations.find(item => item.id === activeConversationId) || null;
+}
+function startNewChat() {
+  activeConversationId = null;
+  chatTranscript.replaceChildren();
+  resultBox.textContent = "";
+  mediaBox.replaceChildren();
+  sourceList.replaceChildren();
+  sourcesBox.hidden = true;
+  promptBox.value = "";
+  selectedImages = [];
+  imageInput.value = "";
+  preview.replaceChildren();
+  fileStatus.textContent = "Attach an image or document";
+  statusBox.textContent = "New chat";
+  renderChatHistory();
+}
+function addChatMessage(role, content, time) {
+  const bubble = document.createElement("article");
+  bubble.className = "chat-message " + (role === "user" ? "user-message" : "assistant-message");
+  const label = document.createElement("div");
+  label.className = "chat-message-label";
+  label.textContent = role === "user" ? "You" : "Ask.Me";
+  const body = document.createElement("div");
+  body.className = "chat-message-body";
+  body.textContent = content;
+  const stamp = document.createElement("time");
+  stamp.className = "chat-message-time";
+  stamp.dateTime = time || new Date().toISOString();
+  stamp.textContent = new Date(stamp.dateTime).toLocaleString();
+  bubble.append(label, body, stamp);
+  chatTranscript.appendChild(bubble);
+  chatTranscript.scrollTop = chatTranscript.scrollHeight;
+}
+function renderConversation(conversation) {
+  chatTranscript.replaceChildren();
+  for (const message of conversation.messages || []) addChatMessage(message.role, message.content, message.time);
+  resultBox.textContent = "";
+  mediaBox.replaceChildren();
+  sourceList.replaceChildren();
+  sourcesBox.hidden = true;
+  statusBox.textContent = "Opened saved conversation";
+}
+function renderChatHistory() {
+  historyList.replaceChildren();
+  if (!conversations.length) {
+    const empty = document.createElement("p");
+    empty.className = "history-empty";
+    empty.textContent = "Your previous conversations will appear here.";
+    historyList.appendChild(empty);
+    return;
+  }
+  conversations.forEach(conversation => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "history-item" + (conversation.id === activeConversationId ? " active" : "");
+    const title = document.createElement("span");
+    title.className = "history-item-title";
+    title.textContent = conversation.title || "New conversation";
+    const date = document.createElement("small");
+    date.textContent = new Date(conversation.updatedAt).toLocaleString();
+    item.append(title, date);
+    item.addEventListener("click", () => {
+      activeConversationId = conversation.id;
+      renderConversation(conversation);
+      renderChatHistory();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    historyList.appendChild(item);
+  });
+}
+function storeChatExchange(userText, assistantText) {
+  const now = new Date().toISOString();
+  let conversation = activeConversation();
+  if (!conversation) {
+    conversation = { id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())), title: userText.slice(0, 56) || "Image conversation", createdAt: now, updatedAt: now, messages: [] };
+    conversations.unshift(conversation);
+    activeConversationId = conversation.id;
+  }
+  conversation.messages.push({ role: "user", content: userText || "Attached image", time: now });
+  conversation.messages.push({ role: "assistant", content: assistantText, time: new Date().toISOString() });
+  conversation.updatedAt = new Date().toISOString();
+  conversations.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  conversations = conversations.slice(0, 100);
+  saveConversations();
+  renderConversation(conversation);
+  renderChatHistory();
+}
+if (newChatButton) newChatButton.addEventListener("click", startNewChat);
+renderChatHistory();
+
+
+
+const narratorAuto = document.getElementById("narrator-auto");
+const narratorSpeed = document.getElementById("narrator-speed");
+const narratorSpeedValue = document.getElementById("narrator-speed-value");
+const narratorReadButton = document.getElementById("narrator-read");
+const narratorStopButton = document.getElementById("narrator-stop");
+let latestAnswerText = "";
+const NARRATOR_AUTO_KEY = "askme_narrator_auto";
+const NARRATOR_SPEED_KEY = "askme_narrator_speed";
+if (narratorAuto) narratorAuto.checked = localStorage.getItem(NARRATOR_AUTO_KEY) === "true";
+if (narratorSpeed) narratorSpeed.value = localStorage.getItem(NARRATOR_SPEED_KEY) || "0.85";
+function updateNarratorSpeedLabel() {
+  if (narratorSpeedValue && narratorSpeed) narratorSpeedValue.textContent = Number(narratorSpeed.value).toFixed(2).replace(/0+$/, "").replace(/\.$/, "") + "×";
+}
+updateNarratorSpeedLabel();
+if (narratorAuto) narratorAuto.addEventListener("change", () => localStorage.setItem(NARRATOR_AUTO_KEY, String(narratorAuto.checked)));
+if (narratorSpeed) narratorSpeed.addEventListener("input", () => {
+  updateNarratorSpeedLabel();
+  localStorage.setItem(NARRATOR_SPEED_KEY, narratorSpeed.value);
+});
+function speakText(text) {
+  if (!text || !("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") {
+    statusBox.textContent = "Text-to-speech is not supported by this browser.";
+    return;
+  }
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = Math.max(0.3, Math.min(1.5, Number(narratorSpeed?.value || 0.85)));
+    utterance.onstart = () => { statusBox.textContent = "Narrator is reading the answer…"; };
+    utterance.onend = () => { statusBox.textContent = "Narration finished."; };
+    utterance.onerror = event => { statusBox.textContent = "Narration unavailable: " + (event.error || "speech error"); };
+    window.speechSynthesis.speak(utterance);
+  } catch (error) {
+    statusBox.textContent = "Narration unavailable: " + error.message;
+  }
+}
+if (narratorReadButton) narratorReadButton.addEventListener("click", () => speakText(latestAnswerText || resultBox.textContent));
+if (narratorStopButton) narratorStopButton.addEventListener("click", () => {
+  if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  statusBox.textContent = "Narration stopped.";
+});
+
 const narratorSettingsButton = document.getElementById("narrator-settings-button");
 const narratorModal = document.getElementById("narrator-modal");
 const narratorClose = document.getElementById("narrator-close");
@@ -41,6 +194,7 @@ buildButton.addEventListener("click", askAI);
 
 async function askAI() {
   const prompt = promptBox.value.trim();
+  const submittedPrompt = prompt;
   if (!prompt && !selectedImages.length) {
     statusBox.textContent = "Enter a question or attach an image first.";
     return;
@@ -105,17 +259,16 @@ async function askAI() {
     const response = await fetch(API_BASE + "/api/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, images, ocrText })
+      body: JSON.stringify({ prompt, images, ocrText, includeMedia: true, mediaPreference: "Return a small selection of directly relevant images and videos when useful to explain the answer. Include valid source URLs, titles, and media types." })
     });
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(data.error || "The AI service returned an error.");
 
     resultBox.textContent = data.result || "No response was returned.";
-    if (narratorDefaults.auto || narratorDefaults.enabled) {
-      if (narratorVoiceId) await playServerNarration(data.result || "No response was returned.");
-      else speakText(data.result || "No response was returned.");
-    }
+    latestAnswerText = data.result || "No response was returned.";
+    storeChatExchange(submittedPrompt, data.result || "No response was returned.");
+    if (narratorAuto?.checked) speakText(latestAnswerText);
 
     renderMedia(data.media);
     renderSources(data.sources);
@@ -126,6 +279,7 @@ async function askAI() {
   } catch (error) {
     statusBox.textContent = "Request failed.";
     resultBox.textContent = error.message;
+    storeChatExchange(submittedPrompt, "Request failed: " + error.message);
   } finally {
     buildButton.disabled = false;
   }
